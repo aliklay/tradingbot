@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 from numba import njit
 from scipy.signal import argrelextrema
 
@@ -12,7 +13,13 @@ def compute_retracements(price_data, alternating_extrema):
         retracements[i] = retracement
     return retracements
 
-def elliott_wave_analysis(price_data, window=50):
+def adaptive_window(price_data, volatility_multiplier=1):
+    return int(volatility_multiplier * np.std(price_data[-100:]))
+
+def elliott_wave_analysis(price_data, retracement_threshold=0.618, volatility_multiplier=1):
+
+    # Calculate adaptive window size
+    window = adaptive_window(price_data, volatility_multiplier)
 
     # Find local maxima and minima
     local_max = argrelextrema(price_data, np.greater_equal, order=window)[0]
@@ -37,7 +44,8 @@ def elliott_wave_analysis(price_data, window=50):
     retracements = compute_retracements(price_data, alternating_extrema)
 
     # Identify waves and corrections
-    waves = [(alternating_extrema[i], alternating_extrema[i + 1], alternating_extrema[i + 2]) for i, retracement in enumerate(retracements) if retracement >= 0.618]
-    corrections = [(alternating_extrema[i], alternating_extrema[i + 1], alternating_extrema[i + 2]) for i, retracement in enumerate(retracements) if retracement < 0.618]
+    waves = [(alternating_extrema[i], alternating_extrema[i + 1], alternating_extrema[i + 2]) for i, retracement in enumerate(retracements) if retracement >= retracement_threshold]
+    corrections = [(alternating_extrema[i], alternating_extrema[i + 1], alternating_extrema[i + 2]) for i, retracement in enumerate(retracements) if retracement < retracement_threshold]
 
     return waves, corrections
+
