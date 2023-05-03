@@ -2,27 +2,32 @@ import numpy as np
 import random
 from collections import deque
 from keras.models import Sequential, load_model
-from keras.layers import Dense, Dropout, BatchNormalization, PReLU, LSTM, Reshape
+from keras.layers import Dense, LeakyReLU, Dropout, BatchNormalization
 from keras.optimizers import Adam
-from keras.regularizers import l2
+from keras.callbacks import LearningRateScheduler
+from keras.callbacks import Callback
 
 class DQNAgent:
     @staticmethod
-    def create_dqn_model(input_shape, n_actions, timesteps=1):
+    def create_dqn_model(input_shape, n_actions):
         model = Sequential()
-        model.add(Reshape((timesteps, input_shape[0] // timesteps), input_shape=input_shape))
-        model.add(LSTM(128, input_shape=input_shape, return_sequences=True, kernel_regularizer=l2(0.01)))
-        model.add(PReLU())
+        model.add(Dense(256, input_shape=input_shape))
         model.add(BatchNormalization())
-        model.add(LSTM(256, return_sequences=False, kernel_regularizer=l2(0.01)))
-        model.add(PReLU())
+        model.add(LeakyReLU(alpha=0.1))
+        model.add(Dropout(0.2))
+        model.add(Dense(128))
         model.add(BatchNormalization())
-        model.add(Dropout(0.5))
-        model.add(Dense(n_actions, activation='linear', kernel_regularizer=l2(0.01)))
+        model.add(LeakyReLU(alpha=0.1))
+        model.add(Dropout(0.2))
+        model.add(Dense(64))
+        model.add(BatchNormalization())
+        model.add(LeakyReLU(alpha=0.1))
+        model.add(Dropout(0.2))
+        model.add(Dense(n_actions, activation='linear'))
         model.compile(optimizer=Adam(learning_rate=0.001), loss='mse')
         return model
 
-    def __init__(self, model, n_actions, epsilon=1.0, epsilon_min=0.1, epsilon_decay=0.995, gamma=0.99, batch_size=64, update_freq=1000, buffer_size=10000):
+    def __init__(self, model, n_actions, epsilon=1.0, epsilon_min=0.1, epsilon_decay=0.995, gamma=0.95, batch_size=128, update_freq=2000, buffer_size=100000):
         self.model = model
         self.target_model = DQNAgent.create_dqn_model(model.input_shape[1:], n_actions)
         self.n_actions = n_actions
@@ -62,29 +67,51 @@ class DQNAgent:
             states.append(state[0])
             targets.append(target[0])
 
-        self.model.fit(np.array(states), np.array(targets), epochs=1, verbose=0)
+        def step_decay(epoch):
+            initial_lr = 0.001
+            decay_rate = 0.5
+            decay_step = 2000
+            lr = initial_lr * decay_rate ** (epoch / decay_step)
+            return lr
+
+        lr_scheduler = LearningRateScheduler(step_decay)
+        loss_history = LossHistory()
+
+        self.model.fit(np.array(states), np.array(targets), epochs=1, verbose=0, callbacks=[lr_scheduler, loss_history])
 
         if self.epsilon > self.epsilon_min:
             self.epsilon *= self.epsilon_decay
+
+        return loss_history.losses
+
 
     def update_target_model(self):
         self.target_model.set_weights(self.model.get_weights())
 
     def train(self, state, action, reward, next_state, done):
         self.remember(state, action, reward, next_state, done)
-        self.replay()
+        losses = self.replay()
 
         if self.steps % self.update_freq == 0:
             self.update_target_model()
 
         self.steps += 1
 
+        return losses if losses is not None else 0
 
+    
     def save(self, file_path):
         self.model.save(file_path)
 
     def load(self, file_path):
         self.model = load_model(file_path)
+
+class LossHistory(Callback):
+    def on_train_begin(self, logs={}):
+        self.losses = []
+
+    def on_batch_end(self, batch, logs={}):
+        self.losses.append(logs.get('loss'))
 
 class ReplayBuffer:
     def __init__(self, buffer_size):
@@ -99,4 +126,3 @@ class ReplayBuffer:
 
     def __len__(self):
         return len(self.buffer)
-
