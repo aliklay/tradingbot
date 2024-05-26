@@ -26,7 +26,7 @@ def get_trading_rules(symbol):
                     'amount': {'min': float(filters['LOT_SIZE']['minQty'])},
                     'price': {'min': float(filters['PRICE_FILTER']['tickSize'])},
                 },
-                'filters': filters  # Add this line to include 'filters' in the returned dictionary
+                'filters': filters
             }
     return None
 
@@ -53,7 +53,7 @@ def perform_trade(action, symbol, balance_data):
             price_increment = float(trading_rules['limits']['price']['min'])
             adjusted_amount_to_buy = round_step(amount_to_buy, price_increment)
 
-            print(f"amount_to_buy: {amount_to_buy}, adjusted_amount_to_buy: {adjusted_amount_to_buy}")  # Debugging line
+            print(f"amount_to_buy: {amount_to_buy}, adjusted_amount_to_buy: {adjusted_amount_to_buy}")
 
             order = binance.create_order(symbol=symbol,
                                          side="BUY",
@@ -113,7 +113,6 @@ while True:
         print(f"Action chosen: {action}")
         perform_trade(action, symbol, balance)
 
-        # Sleep for the desired trading interval, e.g., 5 minutes
         time.sleep(trading_interval)
     except Exception as e:
         print(f"An error occurred: {e}")
