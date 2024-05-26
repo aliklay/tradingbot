@@ -13,7 +13,6 @@ class TradingEnvironment(gym.Env):
         self.position = 0
         self.last_trade_step = 0
 
-        # Define action and observation spaces
         self.action_space = gym.spaces.Discrete(3)  # Buy, sell, or hold
         self.observation_space = gym.spaces.Box(low=0, high=1, shape=(self.features.shape[1],), dtype=np.float32)
 
