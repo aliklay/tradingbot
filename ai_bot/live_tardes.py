@@ -80,7 +80,7 @@ def perform_trade(action, symbol, balance_data):
 
 
 
-binance = Client('5wQ2J9PDbqA5oLuNLH8GOalQabXPEouYy3kfVKPcSQzXzI6tPz3ysAqGNkjePP6z', '5p9jN1vfYXV6NOLEP5wAdqeFddL78QVFA3gIedd2bqvKz3jUBopBP9gWO5s2f5YE')
+binance = Client('api_public_key', 'api_secret_key')
 
 symbol = 'BTCUSDT'
 timeframe = '1h'
