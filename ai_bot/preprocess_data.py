@@ -34,21 +34,16 @@ def preprocess_data(price_data, waves, corrections, sma_window=10, roc_window=10
     for correction in corrections:
         price_data_df.loc[correction[0]:correction[2], 'correction'] = 1
 
-    # Add the simple moving average as a feature
     price_data_df['sma'] = simple_moving_average(price_data_df['close'], sma_window)
 
-    # Add the rate of change as a feature
     price_data_df['roc'] = rate_of_change(price_data_df['close'], roc_window)
 
-    # Calculate MACD, signal line, and histogram
     macd_line, signal_line, histogram = macd(price_data_df['close'])
 
-    # Add MACD features to the DataFrame
     price_data_df['macd_line'] = macd_line
     price_data_df['signal_line'] = signal_line
     price_data_df['histogram'] = histogram
 
-    # Normalize the features
     features = price_data_df.values
     scaler = MinMaxScaler()
     features = scaler.fit_transform(features)
