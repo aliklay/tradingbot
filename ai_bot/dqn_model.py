@@ -4,8 +4,42 @@ from collections import deque
 from keras.models import Sequential, load_model
 from keras.layers import Dense, LeakyReLU, Dropout, BatchNormalization
 from keras.optimizers import Adam
-from keras.callbacks import LearningRateScheduler
-from keras.callbacks import Callback
+from keras.callbacks import LearningRateScheduler, Callback
+
+class PrioritizedReplayBuffer:
+    def __init__(self, buffer_size, alpha=0.6):
+        self.buffer = deque(maxlen=buffer_size)
+        self.priorities = deque(maxlen=buffer_size)
+        self.alpha = alpha
+
+    def add(self, state, action, reward, next_state, done):
+        max_priority = max(self.priorities, default=1.0)
+        self.buffer.append((state, action, reward, next_state, done))
+        self.priorities.append(max_priority)
+
+    def sample(self, batch_size, beta=0.4):
+        priorities = np.array(self.priorities, dtype=np.float32)
+        priorities = priorities ** self.alpha
+        probabilities = priorities / priorities.sum()
+
+        indices = np.random.choice(len(self.buffer), batch_size, p=probabilities)
+        samples = [self.buffer[idx] for idx in indices]
+
+        total = len(self.buffer)
+        weights = (total * probabilities[indices]) ** (-beta)
+        weights = weights / weights.max()
+
+        batch = list(zip(*samples))
+        states, actions, rewards, next_states, dones = batch
+        return np.array(states), np.array(actions), np.array(rewards), np.array(next_states), np.array(dones), weights, indices
+
+    def update_priorities(self, batch_indices, batch_priorities):
+        for idx, priority in zip(batch_indices, batch_priorities):
+            self.priorities[idx] = priority
+
+    def __len__(self):
+        return len(self.buffer)
+
 
 class DQNAgent:
     @staticmethod
@@ -27,7 +61,7 @@ class DQNAgent:
         model.compile(optimizer=Adam(learning_rate=0.001), loss='mse')
         return model
 
-    def __init__(self, model, n_actions, epsilon=1.0, epsilon_min=0.1, epsilon_decay=0.995, gamma=0.95, batch_size=128, update_freq=2000, buffer_size=100000):
+    def __init__(self, model, n_actions, epsilon=1.0, epsilon_min=0.05, epsilon_decay=0.99, gamma=0.95, batch_size=128, update_freq=2000, buffer_size=100000, alpha=0.6, beta=0.4):
         self.model = model
         self.target_model = DQNAgent.create_dqn_model(model.input_shape[1:], n_actions)
         self.n_actions = n_actions
@@ -38,7 +72,15 @@ class DQNAgent:
         self.batch_size = batch_size
         self.update_freq = update_freq
         self.steps = 0
-        self.memory = ReplayBuffer(buffer_size)
+        self.memory = PrioritizedReplayBuffer(buffer_size, alpha)
+        self.beta = beta
+
+    def step_decay(self, epoch):
+        initial_lr = 0.001
+        decay_rate = 0.5
+        decay_step = 2000
+        lr = initial_lr * decay_rate ** (epoch / decay_step)
+        return lr
 
     def act(self, state):
         if np.random.rand() < self.epsilon:
@@ -53,37 +95,29 @@ class DQNAgent:
         if len(self.memory) < self.batch_size:
             return
 
-        batch = self.memory.sample(self.batch_size)
-        states, targets = [], []
+        states, actions, rewards, next_states, dones, weights, indices = self.memory.sample(self.batch_size, self.beta)
+        
+        # Ta bort onödig dimension
+        states = np.squeeze(states, axis=1)
+        next_states = np.squeeze(next_states, axis=1)
 
-        for state, action, reward, next_state, done in batch:
-            target = self.model.predict(state)
-            if done:
-                target[0][action] = reward
-            else:
-                next_q_values = self.target_model.predict(next_state)
-                target[0][action] = reward + self.gamma * np.max(next_q_values[0])
+        targets = self.model.predict(states)
+        next_q_values = self.target_model.predict(next_states)
 
-            states.append(state[0])
-            targets.append(target[0])
+        for i, (state, action, reward, next_state, done) in enumerate(zip(states, actions, rewards, next_states, dones)):
+            target = reward
+            if not done:
+                best_next_action = np.argmax(self.model.predict(np.expand_dims(next_state, axis=0))[0])
+                target += self.gamma * next_q_values[i][best_next_action]
+            targets[i][action] = target
 
-        def step_decay(epoch):
-            initial_lr = 0.001
-            decay_rate = 0.5
-            decay_step = 2000
-            lr = initial_lr * decay_rate ** (epoch / decay_step)
-            return lr
-
-        lr_scheduler = LearningRateScheduler(step_decay)
-        loss_history = LossHistory()
-
-        self.model.fit(np.array(states), np.array(targets), epochs=1, verbose=0, callbacks=[lr_scheduler, loss_history])
+        lr_scheduler = LearningRateScheduler(self.step_decay)
+        self.model.fit(states, targets, sample_weight=weights, epochs=1, verbose=0, callbacks=[lr_scheduler])
 
         if self.epsilon > self.epsilon_min:
             self.epsilon *= self.epsilon_decay
 
-        return loss_history.losses
-
+        return np.mean(targets)
 
     def update_target_model(self):
         self.target_model.set_weights(self.model.get_weights())
@@ -99,7 +133,6 @@ class DQNAgent:
 
         return losses if losses is not None else 0
 
-    
     def save(self, file_path):
         self.model.save(file_path)
 
@@ -112,17 +145,3 @@ class LossHistory(Callback):
 
     def on_batch_end(self, batch, logs={}):
         self.losses.append(logs.get('loss'))
-
-class ReplayBuffer:
-    def __init__(self, buffer_size):
-        self.buffer_size = buffer_size
-        self.buffer = deque(maxlen=self.buffer_size)
-
-    def add(self, state, action, reward, next_state, done):
-        self.buffer.append((state, action, reward, next_state, done))
-
-    def sample(self, batch_size):
-        return random.sample(self.buffer, batch_size)
-
-    def __len__(self):
-        return len(self.buffer)

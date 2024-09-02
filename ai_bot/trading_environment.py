@@ -1,6 +1,11 @@
 import gym
 import numpy as np
 
+def _get_sharpe_ratio(returns, risk_free_rate=0.01):
+    return_ratio = np.mean(returns) - risk_free_rate
+    std_dev = np.std(returns)
+    return return_ratio / std_dev if std_dev != 0 else 0
+
 class TradingEnvironment(gym.Env):
     def __init__(self, features, initial_balance=10000, transaction_fee=0.001):
         super(TradingEnvironment, self).__init__()
@@ -26,7 +31,6 @@ class TradingEnvironment(gym.Env):
         new_balance = self.balance
         new_position = self.position
 
-        # Calculate new balance and position based on the action
         if action == 0:  # Buy
             if new_position == 0:
                 amount_to_buy = new_balance / (1 + self.transaction_fee)
@@ -41,8 +45,11 @@ class TradingEnvironment(gym.Env):
         holding_duration = self.current_step - self.last_trade_step
         reward = (new_balance - self.initial_balance) + (new_position * current_price) - holding_duration * holding_duration_penalty
 
-        # Apply bonuses and penalties
         reward *= profit_bonus if reward > 0 else loss_penalty
+
+        returns = [self.balance - self.initial_balance]
+        sharpe_ratio = _get_sharpe_ratio(returns)
+        reward += sharpe_ratio
 
         return reward
 
@@ -63,7 +70,7 @@ class TradingEnvironment(gym.Env):
             transaction_details = 'SELL'
 
         reward = self._get_reward(action)
-        done = self.current_step == len(self.features) - 1
+        done = self.current_step == len(self.features) - 1 or self.current_step >= 1000  # Begränsa till 1000 steg per episod
         next_state = self.features[self.current_step]
         info = {'transaction': transaction_details}
 
@@ -84,5 +91,3 @@ class TradingEnvironment(gym.Env):
                   f'Portfolio Value: ${(self.balance + self.position * self.features[self.current_step, 0]):.2f}')
         else:
             raise NotImplementedError(f'Render mode {mode} not supported')
-
-

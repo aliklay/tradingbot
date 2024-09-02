@@ -18,20 +18,16 @@ def adaptive_window(price_data, volatility_multiplier=1):
 
 def elliott_wave_analysis(price_data, retracement_threshold=0.618, volatility_multiplier=1):
 
-    # Calculate adaptive window size
     window = adaptive_window(price_data, volatility_multiplier)
 
-    # Find local maxima and minima
     local_max = argrelextrema(price_data, np.greater_equal, order=window)[0]
     local_min = argrelextrema(price_data, np.less_equal, order=window)[0]
 
     extrema = np.concatenate((local_max, local_min))
     extrema.sort()
 
-    # Compute price differences
     diffs = np.diff(price_data[extrema])
 
-    # Determine alternating maxima/minima
     alternating_extrema = [extrema[0]]
     for i, diff in enumerate(diffs[:-1]):
         if np.sign(diff) != np.sign(diffs[i + 1]):
@@ -40,12 +36,9 @@ def elliott_wave_analysis(price_data, retracement_threshold=0.618, volatility_mu
     alternating_extrema.append(extrema[-1])
     alternating_extrema = np.array(alternating_extrema)
 
-    # Compute retracements
     retracements = compute_retracements(price_data, alternating_extrema)
 
-    # Identify waves and corrections
     waves = [(alternating_extrema[i], alternating_extrema[i + 1], alternating_extrema[i + 2]) for i, retracement in enumerate(retracements) if retracement >= retracement_threshold]
     corrections = [(alternating_extrema[i], alternating_extrema[i + 1], alternating_extrema[i + 2]) for i, retracement in enumerate(retracements) if retracement < retracement_threshold]
 
     return waves, corrections
-

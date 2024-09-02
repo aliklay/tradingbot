@@ -1,4 +1,5 @@
 import time
+import logging
 from binance.client import Client
 import numpy as np
 from keras.models import load_model
@@ -8,6 +9,8 @@ from elliott_wave_analysis import elliott_wave_analysis
 from preprocess_data import preprocess_data
 from fetch_data import get_historical_data
 import math
+
+logging.basicConfig(level=logging.INFO, filename='trading_bot.log', filemode='a', format='%(asctime)s - %(levelname)s - %(message)s')
 
 def get_latest_price(symbol):
     ticker = binance.get_symbol_ticker(symbol=symbol)
@@ -30,11 +33,9 @@ def get_trading_rules(symbol):
             }
     return None
 
-
 def round_step(value, step_size):
     decimal_places = int(abs(math.log10(step_size)))
     return round(math.floor(value / step_size) * step_size, decimal_places)
-
 
 def perform_trade(action, symbol, balance_data):
     percentage_of_balance_to_trade = 1
@@ -53,13 +54,13 @@ def perform_trade(action, symbol, balance_data):
             price_increment = float(trading_rules['limits']['price']['min'])
             adjusted_amount_to_buy = round_step(amount_to_buy, price_increment)
 
-            print(f"amount_to_buy: {amount_to_buy}, adjusted_amount_to_buy: {adjusted_amount_to_buy}")
+            logging.info(f"amount_to_buy: {amount_to_buy}, adjusted_amount_to_buy: {adjusted_amount_to_buy}")
 
             order = binance.create_order(symbol=symbol,
                                          side="BUY",
                                          type="MARKET",
                                          quoteOrderQty=adjusted_amount_to_buy)
-            print(f"Buy order placed: {order}")
+            logging.info(f"Buy order placed: {order}")
     elif action == 1:  # Sell
         amount_to_sell = balances[base_asset] * percentage_of_balance_to_trade
         min_trade_size = float(trading_rules['limits']['amount']['min'])
@@ -72,13 +73,7 @@ def perform_trade(action, symbol, balance_data):
                                          side="SELL",
                                          type="MARKET",
                                          quantity=adjusted_amount_to_sell)
-            print(f"Sell order placed: {order}")
-
-
-
-
-
-
+            logging.info(f"Sell order placed: {order}")
 
 binance = Client('api_public_key', 'api_secret_key')
 
@@ -110,11 +105,10 @@ while True:
         state = np.array([new_features[-1]])
 
         action = agent.act(state)
-        print(f"Action chosen: {action}")
+        logging.info(f"Action chosen: {action}")
         perform_trade(action, symbol, balance)
 
         time.sleep(trading_interval)
     except Exception as e:
-        print(f"An error occurred: {e}")
+        logging.error(f"An error occurred: {e}", exc_info=True)
         time.sleep(trading_interval)
-
